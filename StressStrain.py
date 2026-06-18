@@ -34,36 +34,45 @@ def ComputeStressStrain(Elem,C):
                              ( 1/np.sqrt(3),  1/np.sqrt(3)), # (xi_3, eta_3)
                              (-1/np.sqrt(3),  1/np.sqrt(3))] # (xi_4, eta_4)
     
-    Elem['Strains'] = np.zeros((8,3))  # Initializing strain array for all 8 nodes (epsilon_xx, epsilon_yy, gamma_xy)
-    Elem['Stresses'] = np.zeros((8,4))  # Initializing stress array for all 8 nodes (sigma_xx, sigma_yy, tau_xy)
+    Elem['Strains'] = np.zeros((Elem['NumNodes'],3))  # Initializing strain array for all nodes (epsilon_xx, epsilon_yy, gamma_xy)
+    Elem['Stresses'] = np.zeros((Elem['NumNodes'],4))  # Initializing stress array for all nodes (sigma_xx, sigma_yy, tau_xy)
     SuperconStrains = np.zeros((4,3))  # Initializing strain array for superconvergent points
     SuperconStresses = np.zeros((4,3))  # Initializing stress array for superconvergent points
 
     # Looping over superconvergent points to compute strains and stresses
     for i in range(4):
-        J = StiffnessMatrix.ComputeJ(Elem, SuperConvergentPoints[i][0], SuperConvergentPoints[i][1])  # Jacobian matrix at superconvergent point
+        dN_nat = StiffnessMatrix.ComputedNaturalDerivatives(SuperConvergentPoints[i][0], SuperConvergentPoints[i][1], Elem)  # Shape function derivatives at superconvergent point
+        J = StiffnessMatrix.ComputeJ(Elem, SuperConvergentPoints[i][0], SuperConvergentPoints[i][1], dN_nat)  # Jacobian matrix at superconvergent point
         J_inv = np.linalg.inv(J)  # Inverse of Jacobian matrix
-        B = StiffnessMatrix.ComputeB(Elem, SuperConvergentPoints[i][0], SuperConvergentPoints[i][1], J_inv)  # Strain-displacement matrix at superconvergent point
+        B = StiffnessMatrix.ComputeB(Elem, SuperConvergentPoints[i][0], SuperConvergentPoints[i][1], J_inv, dN_nat)  # Strain-displacement matrix at superconvergent point
 
         SuperconStrains[i,:] = B @ Elem['DisplacementVector']  # Strain at superconvergent point
 
         SuperconStresses[i,:] = C @ SuperconStrains[i,:]  # Stress at superconvergent point
     
 
-    # Now we need to extrapolate the values to the nodes
-    ExtrapolationMatrix = np.sqrt(3)*np.array([
-        [-1, -1],
-        [ 1, -1],
-        [ 1,  1],
-        [-1,  1],
-        [ 0, -1],
-        [ 1,  0],
-        [ 0,  1],
-        [-1,  0]
-    ])
+    if Elem['NumNodes'] == 8:
+        # Now we need to extrapolate the values to the nodes
+        ExtrapolationMatrix = np.sqrt(3)*np.array([
+            [-1, -1],
+            [ 1, -1],
+            [ 1,  1],
+            [-1,  1],
+            [ 0, -1],
+            [ 1,  0],
+            [ 0,  1],
+            [-1,  0]
+        ])
+    elif Elem['NumNodes'] == 4:
+        ExtrapolationMatrix = np.sqrt(3)*np.array([
+            [-1, -1],
+            [ 1, -1],
+            [ 1,  1],
+            [-1,  1]
+        ])
 
     # Extrapolate strains and stresses to nodes
-    for i in range(8):
+    for i in range(Elem['NumNodes']):
         N = np.zeros((4)) # Shape functions at superconvergent points
         N = StiffnessMatrix.ComputeNExtrap(N, ExtrapolationMatrix[i,0], ExtrapolationMatrix[i,1])
 
