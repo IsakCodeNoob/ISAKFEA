@@ -1,7 +1,7 @@
 The ISAKFEA program is a finite element program written by Jonas Isaksen. It may be used and modified freely, 
 for non-commercial purposes, provided that this notice is preserved.
 
-The program is written in Python, and zero attempts have been made to optimize the construction of the global stiffness matrix. Thus, the program is very inefficient!
+The program is written in Python, and uses COO triplets to assemble the global stiffness matrix. Otherwise, no attempts have been made to optimize the performance.
 
 Units for the program is mm, MPa, m/m (for strain)
 
@@ -19,6 +19,7 @@ Modules and functions:
 
 - StiffnessMatrix.py
 -- Empty_Local: Initializes local variables used for each element when calculating the elementwise stuff (Stiffness and stress)
+-- ComputedNaturalDerivatives: Used to calculate the derivatives of the shape functions w.r.t. the natural coordinates
 -- ComputeJ: Computes Jacobian matrix in defined spots. Thus it is used in loops to calculate Jacobian in e.g. Gauss-Points
 -- ComputeB: Computes strain-displacement matrix in defined spots. Thus it is used in loops to calculate B-matrix in e.g. Gauss-Points
 -- ComputeNExtrap: Computes shape-functions of a 4-node element in defined points. This is used for stress-extrapolation from superconvergent points
@@ -52,6 +53,9 @@ Requirements for input file:
 - Format specifier for model thickness: '(7g16.9)'
 - Format specifier for applied forces: 'FND'
 - Format specifier for displacement BCs: 'DND'
+- Format specifier for total number of nodes: 'NUMOFF,NODE,'
+- Format specifier for total number of elements: 'NUMOFF,ELEM,'
+- Format specifier for element type: '(2i9,19a9)'
 - For examples and better illustrations, see '3PB.inp', as the program is based on this file. It is a three point bending model.
 - Input files must be located in the folder 'IO\'
 -- Necessary as the output folder and files are created here. Furthermore, the FE_Plotter.py assumes result files are located here. 
