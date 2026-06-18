@@ -6,7 +6,7 @@
 import numpy as np                      # Fundamental package for numerical computations
 import matplotlib.pyplot as plt         # Package for plotting results
 import matplotlib.colors as mcolors     # Package for handling colors in plots
-from tqdm import tqdm                   # Progressbar
+import matplotlib.tri as mtri           # Package for building explicit triangulations
 
 # Importing core modules of ISAKFEA
 import Input_Loader
@@ -120,17 +120,15 @@ plt.figure()  # Set figure size
 cmap = plt.get_cmap('jet', len(ContourLevels)-1)  # Get the 'jet' colormap with the number of levels
 norm = mcolors.BoundaryNorm(ContourLevels, cmap.N)  # Create a normalization object based on the contour levels
 
-# Looping over each element in the model
-for ii in tqdm(range(G['NumElem'])):
-    
-    nodeidx = G['ElemNodes'][ii,0:4] - 1 # so far only plotting corner nodes (-1 due to zero indexing)
+# Building one global triangulation by splitting each quad element's 4 corner nodes into 2 triangles
+quads = G['ElemNodes'][:,0:4] - 1  # Corner node indices per element (-1 for zero indexing)
+triangles = np.empty((2*G['NumElem'], 3), dtype=int)  # 2 triangles per element
+triangles[0::2] = quads[:, [0,1,2]]  # First triangle of each quad: nodes 0,1,2
+triangles[1::2] = quads[:, [0,2,3]]  # Second triangle of each quad: nodes 0,2,3
 
-    #ElemX , ElemY = np.meshgrid(X[nodeidx], Y[nodeidx])
-    ElemX = X[nodeidx]
-    ElemY = Y[nodeidx]
-    ElemVar = PlotVar[nodeidx]
+triang = mtri.Triangulation(X, Y, triangles)  # Single triangulation covering the whole mesh
 
-    plt.tricontourf(ElemX,ElemY,ElemVar,cmap=cmap,levels=ContourLevels,norm=norm)  # Create filled contour plot for the element
+plt.tricontourf(triang, PlotVar, cmap=cmap, levels=ContourLevels, norm=norm)  # One contour plot for the entire mesh
 
 
 plt.colorbar(label=ColorbarLabel)  # Add colorbar with label
