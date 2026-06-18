@@ -1,6 +1,6 @@
 # This document is responsible for constructing the global stiffness matrix for the ISAKFEA program.
 # It assembles the stiffness contributions from individual elements into a global matrix.
-# The only considered element type is PLANE183 elements (8-nnode isoparametric quadrilateral elements).
+# The only considered element types are PLANE182 and PLANE183 elements (4- and 8-node isoparametric elements).
 # The software is developed by Jonas Isaksen, and may be used and modified freely for
 # non-commercial purposes, provided that this notice is preserved.
 
@@ -13,11 +13,12 @@ import numpy as np                      # Fundamental package for numerical comp
 Elem = {}  # Local dictionary to store element-specific parameters and data
 def Empty_Local(G,elem_id):
 
-    Elem['NumNodes'] = 8        # Number of nodes per element ( PLANE183 element )
-    Elem['Ke'] = np.zeros((2*Elem['NumNodes'], 2*Elem['NumNodes']))           # Element stiffness matrix
+    
     Elem['NodeIDs'] = None      # Node IDs associated with the element (used for bookkeeping)
     Elem['NodeIDs'] = G['ElemNodes'][elem_id,:]  # Extracting node IDs for the element
     Elem['ElemID'] = elem_id    # Element ID
+    Elem['NumNodes'] = len(Elem['NodeIDs'])        # Number of nodes per element ( PLANE183 element )
+    Elem['Ke'] = np.zeros((2*Elem['NumNodes'], 2*Elem['NumNodes']))           # Element stiffness matrix
 
     Elem['Coords'] = None       # Coordinates of the element nodes
     Elem['Coords'] = G['NodeCoords'][Elem['NodeIDs']-1,:]  # Extracting node coordinates for the element (-1 for zero indexing done in python)
@@ -30,31 +31,50 @@ def Empty_Local(G,elem_id):
     return Elem
 
 
-def ComputeJ(Elem,xi,eta):
+def ComputedNaturalDerivatives(xi, eta, Elem):
+    # Computes the shape function derivatives with respect to natural coordinates (xi, eta) for PLANE183 elements
+
+    dN_nat = np.zeros((2,Elem['NumNodes']))  # 2 rows for xi and eta derivatives, columns for each node
+
+    if Elem['NumNodes'] == 8: # Quadratic 8-node element
+        # Derivatives w.r.t. xi
+        dN_nat[0,0] = -0.25*(eta+2*xi)*(eta-1)
+        dN_nat[0,1] = 0.25*(eta-2*xi)*(eta-1)
+        dN_nat[0,2] = 0.25*(eta+2*xi)*(eta+1)
+        dN_nat[0,3] = -0.25*(eta-2*xi)*(eta+1)
+        dN_nat[0,4] =  xi*(eta-1)
+        dN_nat[0,5] = -0.5*eta**2+0.5
+        dN_nat[0,6] = -xi*(eta+1)
+        dN_nat[0,7] = 0.5*eta**2-0.5
+
+        # Derivatives w.r.t. eta
+        dN_nat[1,0] = -0.25*(xi+2*eta)*(xi-1)
+        dN_nat[1,1] = -0.25*(xi-2*eta)*(xi+1)
+        dN_nat[1,2] = 0.25*(xi+2*eta)*(xi+1)
+        dN_nat[1,3] = 0.25*(xi-2*eta)*(xi-1)
+        dN_nat[1,4] = 0.5*xi**2-0.5
+        dN_nat[1,5] = -eta*(xi+1)
+        dN_nat[1,6] = -0.5*xi**2+0.5
+        dN_nat[1,7] = eta*(xi-1)
+
+    elif Elem['NumNodes'] == 4: # Linear 4-node element
+        # Derivatives w.r.t. xi
+        dN_nat[0,0] = -0.25*(1-eta)
+        dN_nat[0,1] = 0.25*(1-eta)
+        dN_nat[0,2] = 0.25*(1+eta)
+        dN_nat[0,3] = -0.25*(1+eta)
+
+        # Derivatives w.r.t. eta
+        dN_nat[1,0] = -0.25*(1-xi)
+        dN_nat[1,1] = -0.25*(1+xi)
+        dN_nat[1,2] = 0.25*(1+xi)
+        dN_nat[1,3] = 0.25*(1-xi)
+
+    return dN_nat
+
+
+def ComputeJ(Elem,xi,eta,dN_nat):
     # Computing the Jacobian matrix for the element at given natural coordinates (xi, eta)
-
-    # Shape function derivatives with respect to natural coordinates
-    dN_nat = np.zeros((2,Elem['NumNodes']))
-
-    # Derivatives w.r.t. xi
-    dN_nat[0,0] = -0.25*(eta+2*xi)*(eta-1)
-    dN_nat[0,1] = 0.25*(eta-2*xi)*(eta-1)
-    dN_nat[0,2] = 0.25*(eta+2*xi)*(eta+1)
-    dN_nat[0,3] = -0.25*(eta-2*xi)*(eta+1)
-    dN_nat[0,4] =  xi*(eta-1)
-    dN_nat[0,5] = -0.5*eta**2+0.5
-    dN_nat[0,6] = -xi*(eta+1)
-    dN_nat[0,7] = 0.5*eta**2-0.5
-
-    # Derivatives w.r.t. eta
-    dN_nat[1,0] = -0.25*(xi+2*eta)*(xi-1)
-    dN_nat[1,1] = -0.25*(xi-2*eta)*(xi+1)
-    dN_nat[1,2] = 0.25*(xi+2*eta)*(xi+1)
-    dN_nat[1,3] = 0.25*(xi-2*eta)*(xi-1)
-    dN_nat[1,4] = 0.5*xi**2-0.5
-    dN_nat[1,5] = -eta*(xi+1)
-    dN_nat[1,6] = -0.5*xi**2+0.5
-    dN_nat[1,7] = eta*(xi-1)
 
     # Initializing Jacobian matrix
     J = np.zeros((2,2))
@@ -66,31 +86,10 @@ def ComputeJ(Elem,xi,eta):
 
     return J
 
-def ComputeB(Elem,xi,eta,J_inv):
+
+def ComputeB(Elem,xi,eta,J_inv,dN_nat):
     # Computing the strain-displacement matrix B for the element at given natural coordinates (xi, eta)
 
-    # Shape function derivatives with respect to natural coordinates
-    dN_nat = np.zeros((2,Elem['NumNodes']))
-
-    # Derivatives w.r.t. xi
-    dN_nat[0,0] = -0.25*(eta+2*xi)*(eta-1)
-    dN_nat[0,1] = 0.25*(eta-2*xi)*(eta-1)
-    dN_nat[0,2] = 0.25*(eta+2*xi)*(eta+1)
-    dN_nat[0,3] = -0.25*(eta-2*xi)*(eta+1)
-    dN_nat[0,4] =  xi*(eta-1)
-    dN_nat[0,5] = -0.5*eta**2+0.5
-    dN_nat[0,6] = -xi*(eta+1)
-    dN_nat[0,7] = 0.5*eta**2-0.5
-
-    # Derivatives w.r.t. eta
-    dN_nat[1,0] = -0.25*(xi+2*eta)*(xi-1)
-    dN_nat[1,1] = -0.25*(xi-2*eta)*(xi+1)
-    dN_nat[1,2] = 0.25*(xi+2*eta)*(xi+1)
-    dN_nat[1,3] = 0.25*(xi-2*eta)*(xi-1)
-    dN_nat[1,4] = 0.5*xi**2-0.5
-    dN_nat[1,5] = -eta*(xi+1)
-    dN_nat[1,6] = -0.5*xi**2+0.5
-    dN_nat[1,7] = eta*(xi-1)
 
     # Shape function derivatives with respect to global coordinates
     dN_glob = np.zeros((2,Elem['NumNodes']))
@@ -135,16 +134,18 @@ def LocalStiffness(Elem):
         [0, 0, E/(2*(1+nu))]
     ])
 
-    # Integration points (Gauss quadrature, reduced integration)
+    # Integration points (Gauss quadrature, reduced integration for quads, full for linear elements)
     xi =  1/np.sqrt(3)*np.array([-1, 1])
     eta = 1/np.sqrt(3)*np.array([-1, 1])
 
     # Gauss integration to compute element stiffness matrix
     for i in range(len(xi)):
         for j in range(len(eta)):
-            J = ComputeJ(Elem, xi[i], eta[j])
+            # Shape function derivatives with respect to natural coordinates
+            dN_nat = ComputedNaturalDerivatives(xi[i], eta[j], Elem)
+            J = ComputeJ(Elem, xi[i], eta[j], dN_nat)  # Jacobian matrix at integration point
             J_inv = np.linalg.inv(J)
-            B = ComputeB(Elem, xi[i], eta[j], J_inv)
+            B = ComputeB(Elem, xi[i], eta[j], J_inv, dN_nat)
 
             Elem['Ke'] += t * np.linalg.det(J) * (B.T @ C @ B)
 
