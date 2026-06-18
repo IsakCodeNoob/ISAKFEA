@@ -29,9 +29,15 @@ G = Input_Loader.load_input(file_path, G)  # Module for loading and parsing inpu
 print("Input data loaded successfully.")
 
 # Constructing stiffness matrix using the StiffnessMatrix module
-# Global stiffness matrix is assembled by K = LeT * Ke * Le for each element
+# Global stiffness matrix is assembled by COO triplets, which is more efficient than assembling directly into a sparse matrix.
 print("Constructing global stiffness matrix...")
 Starttime = timeit.default_timer()  # Start timer
+
+NumDOF = 2 * G['NumNodes']    # Total degrees of freedom in the whole model (2 per node: x, y)
+rows_list = []                # Will collect global row indices of every Ke entry, one array per element
+cols_list = []                # Will collect global column indices of every Ke entry, one array per element
+vals_list = []                # Will collect the Ke entry values themselves, one array per element
+
 for elem_id in tqdm(range(G['NumElem'])):
     Elem = StiffnessMatrix.Empty_Local(G,elem_id)  # Initialize local element dictionary
     Elem['Ke'] = StiffnessMatrix.LocalStiffness(Elem)  # Compute local stiffness matrix
@@ -42,16 +48,16 @@ for elem_id in tqdm(range(G['NumElem'])):
         LM[2*i]   = 2*(Elem['NodeIDs'][i]-1)     # DOF in X direction
         LM[2*i+1] = 2*(Elem['NodeIDs'][i]-1) + 1 # DOF in Y direction
 
-    L = sp.lil_matrix((2*Elem['NumNodes'], G['NumNodes']*2))  # Bookkeeping matrix (16 x total DOF)
-    # Filling the bookkeeping matrix (ones at appropriate locations)
-    for i in range(2*Elem['NumNodes']):
-        L[i,LM[i]] = 1.0
+    rows_list.append(np.repeat(LM, 2*Elem['NumNodes']))  # Global row index for each Ke entry, in row-major order
+    cols_list.append(np.tile(LM, 2*Elem['NumNodes']))    # Global col index for each Ke entry, same order as rows
+    vals_list.append(Elem['Ke'].ravel())                  # Ke values flattened in matching row-major order
 
-    # Assembling global stiffness matrix
-    G['StiffnessMatrix'] += L.T @ Elem['Ke'] @ L  # K = LeT * Ke * Le (Cook eq 4.8-18 to 4.8-20)
+rows = np.concatenate(rows_list)  # All elements' row indices, one flat array
+cols = np.concatenate(cols_list)  # All elements' column indices, one flat array
+vals = np.concatenate(vals_list)  # All elements' Ke values, one flat array
 
-# Inefficient form of sparce matrix. Changing to CSR format after assembly for efficiency (better for solving)
-G['StiffnessMatrix'] = G['StiffnessMatrix'].tocsr()  # Convert to CSR format for efficiency
+# Builds the global matrix directly from triplets; entries sharing a (row, col) pair are summed automatically
+G['StiffnessMatrix'] = sp.coo_matrix((vals, (rows, cols)), shape=(NumDOF, NumDOF)).tocsr()
 
 
 endtime = timeit.default_timer()    # End timer
