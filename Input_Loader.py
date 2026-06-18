@@ -5,7 +5,6 @@
 
 # Packages used in Input_Loader are imported below
 import numpy as np                      # Fundamental package for numerical computations
-import scipy.sparse as sp               # Sparse matrix package
 import re
 
 
@@ -17,6 +16,7 @@ def EmptyGlobal():
 
     G['NumElem'] = 0       # Number of elements in the finite element model
     G['ElemNodes'] = None    # Nodes associated with each element
+    G['ElemType'] = None      # Element type number (e.g. 183 for PLANE183, 182 for PLANE182)
 
     G['StiffnessMatrix'] = None # Global stiffness matrix
     G['LoadVector'] = None     # Global load vector
@@ -42,10 +42,22 @@ def InitializeGlobal(data,G):
             G['LoadVector'] = np.zeros(2*G['NumNodes'])  # Initialize load vector
             G['DisplacementVector'] = np.zeros(2*G['NumNodes'])  # Initialize displacement vector
 
+        elif Line.startswith('(2i9,19a9)'):  # Format specifier for Element type
+            idx = data.index(line) + 1
+            ETData = data[idx].strip().split(' ')         # Split line into components
+            ETData = [int(s) for s in ETData if s != ""]  # Convert to int and remove empty strings
+
+            G['ElemType'] = ETData[1]  # Element type number (e.g. 183 for PLANE183, 182 for PLANE182)
+
+            # NUMOFF,ELEM, (which sets G['NumElem']) always precedes this line in the inp file,
+            # so NumElem is already known by the time we learn the element type
+            if G['ElemType'] == 183:  # If element type is PLANE183, we expect 8 nodes per element
+                G['ElemNodes'] = np.zeros((G['NumElem'], 8), dtype=int)  # Initialize element nodes array
+            elif G['ElemType'] == 182:  # If element type is PLANE182, we expect 4 nodes per element
+                G['ElemNodes'] = np.zeros((G['NumElem'], 4), dtype=int)  # Initialize element nodes array
 
         elif Line.startswith('NUMOFF,ELEM,'):   # Number of elements
             G['NumElem'] = int(Line.split(',')[2])
-            G['ElemNodes'] = np.zeros((G['NumElem'], 8), dtype=int)  # Initialize element nodes array
 
 
 # Sub-function for looping through lines of input data
@@ -152,8 +164,5 @@ def load_input(file_path, G):
 
     LineLoops(data, G)
 
-    # Making the global stiffness matrix and load vector
-    G['StiffnessMatrix'] = sp.lil_matrix((2*G['NumNodes'], 2*G['NumNodes']))  # Initialize global stiffness matrix
-    
     return G
 
